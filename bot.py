@@ -378,14 +378,18 @@ async def admin_clear(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"🗑️ Очищено {count} файлов")
 
 # ========== ЗАПУСК ==========
-async def main():
-    """Запуск бота с обработкой конфликтов"""
+def main():
+    """Запуск бота с правильным управлением event loop"""
+    print("=" * 50)
+    print("🚀 Запуск Telegram бота...")
+    print("=" * 50)
+
     if not BOT_TOKEN:
-        print("❌ Нет BOT_TOKEN в .env")
+        print("❌ Нет BOT_TOKEN в переменных окружения!")
         return
 
     if not AGNES_API_KEY:
-        print("❌ Нет AGNES_API_KEY в .env")
+        print("❌ Нет AGNES_API_KEY в переменных окружения!")
         return
 
     # Создаем приложение
@@ -404,33 +408,27 @@ async def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_custom_prompt))
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
 
-    print("=" * 50)
-    print("✅ Бот запущен!")
-    print("🎨 Режимы: Убрать тени | Свой запрос")
-    print("=" * 50)
+    print("✅ Обработчики зарегистрированы")
 
-    # Очищаем вебхук перед запуском (предотвращает конфликты)
+    # Очищаем вебхук
     try:
-        await app.bot.delete_webhook()
+        # Синхронная очистка вебхука
+        import asyncio
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        loop.run_until_complete(app.bot.delete_webhook())
+        loop.close()
         print("✅ Вебхук удален")
     except Exception as e:
         print(f"⚠️ Не удалось удалить вебхук: {e}")
 
-    # Запускаем с обработкой ошибок
-    while True:
-        try:
-            await app.run_polling(drop_pending_updates=True)
-        except Exception as e:
-            if "Conflict" in str(e):
-                print(f"⚠️ Конфликт: {e}")
-                print("🔄 Перезапуск через 5 секунд...")
-                await asyncio.sleep(5)
-                continue
-            else:
-                print(f"❌ Критическая ошибка: {e}")
-                break
+    print("=" * 50)
+    print("✅ Бот запущен и готов к работе!")
+    print("🎨 Режимы: Убрать тени | Свой запрос")
+    print("=" * 50)
+
+    # Запускаем бота
+    app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
-    from datetime import datetime
-    import asyncio
-    asyncio.run(main())
+    main()
