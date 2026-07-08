@@ -1,14 +1,13 @@
 import os
 import logging
-import tempfile
 import time
 import csv
-import json
 from pathlib import Path
 import requests
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler
 from dotenv import load_dotenv
+import asyncio
 
 load_dotenv()
 
@@ -44,8 +43,6 @@ STATE_SELECTING_MODE = 0
 STATE_WAITING_CUSTOM_PROMPT = 2
 
 # ========== ПРОМТЫ ==========
-
-# 1. Убрать тени + белый фон + студийный свет
 PROMPT_REMOVE_SHADOWS = """Remove all shadows from this photo completely. Make background pure white, studio lighting, even illumination, no shadows visible, professional product photography style, high quality, clean look, shadowless, bright and clear image"""
 
 # ========== ФУНКЦИИ ==========
@@ -68,7 +65,6 @@ def get_user_info(user):
         'full_name': full_name
     }
 
-
 def log_error(user_info, error_type, error_message):
     with open(ERRORS_CSV, 'a', newline='', encoding='utf-8') as f:
         writer = csv.writer(f)
@@ -82,7 +78,6 @@ def log_error(user_info, error_type, error_message):
             error_type,
             error_message
         ])
-
 
 def upload_to_temp_hosting(image_path):
     """Загружает фото на бесплатный хостинг, возвращает URL"""
@@ -103,7 +98,6 @@ def upload_to_temp_hosting(image_path):
     except Exception as e:
         logger.error(f"Upload error: {e}")
         return None
-
 
 async def generate_with_agnes(image_url: str, prompt: str):
     """Отправляет запрос в Agnes API"""
@@ -140,7 +134,6 @@ async def generate_with_agnes(image_url: str, prompt: str):
         logger.error(f"Agnes error: {e}")
         return None
 
-
 # ========== ФУНКЦИИ БОТА ==========
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
@@ -164,7 +157,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     await update.message.reply_text(welcome_text, parse_mode="Markdown", reply_markup=keyboard)
     context.user_data['state'] = STATE_SELECTING_MODE
-
 
 async def mode_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик выбора режима"""
@@ -194,7 +186,6 @@ async def mode_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "Напиши свой запрос:"
         )
 
-
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обрабатывает фото в зависимости от выбранного режима"""
     mode = context.user_data.get('mode')
@@ -208,7 +199,6 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     await handle_general_photo(update, context)
-
 
 async def handle_general_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработка для режима shadows"""
@@ -268,7 +258,6 @@ async def handle_general_photo(update: Update, context: ContextTypes.DEFAULT_TYP
 
     finally:
         input_path.unlink(missing_ok=True)
-
 
 async def handle_custom_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработка для режима 'свой запрос'"""
@@ -330,7 +319,6 @@ async def handle_custom_photo(update: Update, context: ContextTypes.DEFAULT_TYPE
     finally:
         input_path.unlink(missing_ok=True)
 
-
 async def handle_custom_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Сохраняет кастомный промпт"""
     if context.user_data.get('waiting_for_prompt'):
@@ -346,11 +334,9 @@ async def handle_custom_prompt(update: Update, context: ContextTypes.DEFAULT_TYP
             f"✅ **Запрос сохранен!**\n\n📝 «{custom_prompt}»\n\n📤 Теперь отправь фото:"
         )
 
-
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data.clear()
     await update.message.reply_text("❌ Отменено. Отправь /start")
-
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
@@ -363,50 +349,12 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="Markdown"
     )
 
-
-# ========== ЗАПУСК ==========
-def main():
-    if not BOT_TOKEN:
-        print("❌ Нет BOT_TOKEN в .env")
-        return
-
-    if not AGNES_API_KEY:
-        print("❌ Нет AGNES_API_KEY в .env")
-        return
-
-    app = Application.builder().token(BOT_TOKEN).connect_timeout(60).read_timeout(60).build()
-
-    # Команды
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("cancel", cancel))
-    app.add_handler(CommandHandler("help", help_command))
-
-    # Админ-команды
-    app.add_handler(CommandHandler("stat", admin_stats))
-    app.add_handler(CommandHandler("errors", admin_errors))
-    app.add_handler(CommandHandler("clear", admin_clear))
-
-    # Обработчики
-    app.add_handler(CallbackQueryHandler(mode_handler, pattern="^mode_"))
-    app.add_handler(CallbackQueryHandler(mode_handler, pattern="^cancel$"))
-
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_custom_prompt))
-    app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
-
-    print("=" * 50)
-    print("✅ Бот запущен!")
-    print("🎨 Режимы: Убрать тени | Свой запрос")
-    print("=" * 50)
-
-    app.run_polling(drop_pending_updates=True)
-
-
+# ========== АДМИН-КОМАНДЫ ==========
 async def admin_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
         await update.message.reply_text("⛔ Нет доступа")
         return
     await update.message.reply_text("📊 Статистика бота\nАктивен")
-
 
 async def admin_errors(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
@@ -417,7 +365,6 @@ async def admin_errors(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_document(f, filename="errors.csv")
     else:
         await update.message.reply_text("Нет ошибок")
-
 
 async def admin_clear(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
@@ -430,8 +377,60 @@ async def admin_clear(update: Update, context: ContextTypes.DEFAULT_TYPE):
             count += 1
     await update.message.reply_text(f"🗑️ Очищено {count} файлов")
 
+# ========== ЗАПУСК ==========
+async def main():
+    """Запуск бота с обработкой конфликтов"""
+    if not BOT_TOKEN:
+        print("❌ Нет BOT_TOKEN в .env")
+        return
+
+    if not AGNES_API_KEY:
+        print("❌ Нет AGNES_API_KEY в .env")
+        return
+
+    # Создаем приложение
+    app = Application.builder().token(BOT_TOKEN).connect_timeout(60).read_timeout(60).build()
+
+    # Добавляем обработчики
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("cancel", cancel))
+    app.add_handler(CommandHandler("help", help_command))
+    app.add_handler(CommandHandler("stat", admin_stats))
+    app.add_handler(CommandHandler("errors", admin_errors))
+    app.add_handler(CommandHandler("clear", admin_clear))
+
+    app.add_handler(CallbackQueryHandler(mode_handler, pattern="^mode_"))
+    app.add_handler(CallbackQueryHandler(mode_handler, pattern="^cancel$"))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_custom_prompt))
+    app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
+
+    print("=" * 50)
+    print("✅ Бот запущен!")
+    print("🎨 Режимы: Убрать тени | Свой запрос")
+    print("=" * 50)
+
+    # Очищаем вебхук перед запуском (предотвращает конфликты)
+    try:
+        await app.bot.delete_webhook()
+        print("✅ Вебхук удален")
+    except Exception as e:
+        print(f"⚠️ Не удалось удалить вебхук: {e}")
+
+    # Запускаем с обработкой ошибок
+    while True:
+        try:
+            await app.run_polling(drop_pending_updates=True)
+        except Exception as e:
+            if "Conflict" in str(e):
+                print(f"⚠️ Конфликт: {e}")
+                print("🔄 Перезапуск через 5 секунд...")
+                await asyncio.sleep(5)
+                continue
+            else:
+                print(f"❌ Критическая ошибка: {e}")
+                break
 
 if __name__ == "__main__":
     from datetime import datetime
-
-    main()
+    import asyncio
+    asyncio.run(main())
