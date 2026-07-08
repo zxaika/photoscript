@@ -410,25 +410,44 @@ def main():
 
     print("✅ Обработчики зарегистрированы")
 
-    # Очищаем вебхук
-    try:
-        # Синхронная очистка вебхука
-        import asyncio
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        loop.run_until_complete(app.bot.delete_webhook())
-        loop.close()
-        print("✅ Вебхук удален")
-    except Exception as e:
-        print(f"⚠️ Не удалось удалить вебхук: {e}")
-
     print("=" * 50)
     print("✅ Бот запущен и готов к работе!")
     print("🎨 Режимы: Убрать тени | Свой запрос")
     print("=" * 50)
 
-    # Запускаем бота
-    app.run_polling(drop_pending_updates=True)
+    # Запускаем бота с обработкой ошибок для Python 3.14
+    try:
+        # Пробуем стандартный запуск
+        app.run_polling(drop_pending_updates=True)
+    except RuntimeError as e:
+        if "Event loop is closed" in str(e):
+            print("⚠️ Обнаружена проблема с event loop, используем альтернативный метод...")
+            # Альтернативный запуск для Python 3.14
+            import asyncio
+            import nest_asyncio
+            
+            # Устанавливаем nest_asyncio для предотвращения ошибок с закрытым loop
+            try:
+                nest_asyncio.apply()
+            except ImportError:
+                print("⚠️ Установите nest_asyncio: pip install nest_asyncio")
+                # Альтернативный метод без nest_asyncio
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                try:
+                    loop.run_until_complete(app.initialize())
+                    loop.run_until_complete(app.start())
+                    loop.run_until_complete(app.updater.start_polling(drop_pending_updates=True))
+                    loop.run_forever()
+                except KeyboardInterrupt:
+                    loop.run_until_complete(app.shutdown())
+                finally:
+                    loop.close()
+            else:
+                # Запуск с nest_asyncio
+                asyncio.run(app.run_polling(drop_pending_updates=True))
+        else:
+            raise
 
 if __name__ == "__main__":
     main()
