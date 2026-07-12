@@ -416,7 +416,7 @@ def upload_to_temp_hosting(image_path):
         error_logger.error(f"Upload error: {e}\n{traceback.format_exc()}")
         return None
 
-async def generate_with_agnes(image_url: str, prompt: str):
+async def generate_with_agnes(image_url: str, prompt: str, original_width: int = None, original_height: int = None):
     if not AGNES_API_KEY:
         logger_system.log_error(None, "missing_api_key", "AGNES_API_KEY not set")
         return None
@@ -427,13 +427,56 @@ async def generate_with_agnes(image_url: str, prompt: str):
             "Content-Type": "application/json"
         }
 
+        # Определяем размеры с сохранением пропорций
+        if original_width and original_height:
+            # Максимальный размер для Agnes API
+            max_size = 2048
+            # Минимальный размер
+            min_size = 512
+            
+            # Вычисляем масштаб, чтобы вписаться в максимальный размер
+            scale = min(max_size / max(original_width, original_height), 1)
+            
+            # Применяем масштаб
+            width = int(original_width * scale)
+            height = int(original_height * scale)
+            
+            # Округляем до ближайшего числа, кратного 64 (рекомендация для моделей)
+            width = ((width + 31) // 64) * 64
+            height = ((height + 31) // 64) * 64
+            
+            # Проверяем минимальный размер
+            if width < min_size:
+                width = min_size
+            if height < min_size:
+                height = min_size
+                
+            # Если изображение слишком вытянутое, ограничиваем соотношение сторон
+            aspect_ratio = width / height
+            if aspect_ratio > 3:  # слишком широкое
+                width = int(height * 3)
+                width = ((width + 31) // 64) * 64
+            elif aspect_ratio < 0.33:  # слишком высокое
+                height = int(width * 3)
+                height = ((height + 31) // 64) * 64
+                
+        else:
+            # Если размеры не указаны, используем стандартные
+            width, height = 1024, 1024
+
+        logger.info(f"Генерация с размерами: {width}x{height} (оригинал: {original_width}x{original_height})")
+
         payload = {
             "model": "agnes-image-2.0-flash",
             "prompt": prompt,
             "tags": ["img2img"],
             "extra_body": {
                 "image": [image_url],
-                "response_format": "url"
+                "response_format": "url",
+                "width": width,
+                "height": height,
+                "num_inference_steps": 25,
+                "guidance_scale": 7.5
             }
         }
 
@@ -562,6 +605,7 @@ async def admin_callback_handler(update: Update, context: ContextTypes.DEFAULT_T
         await admin_panel_command(update, context)
 
 async def admin_stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
     stats = logger_system.get_stats()
     
     text = f"""
@@ -600,6 +644,7 @@ async def admin_stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     await query.message.edit_text(text, parse_mode="Markdown", reply_markup=keyboard)
 
 async def admin_users_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
     try:
         users = []
         with open(FILES['users'], 'r', encoding='utf-8') as f:
@@ -630,6 +675,7 @@ async def admin_users_command(update: Update, context: ContextTypes.DEFAULT_TYPE
         await query.message.edit_text(f"❌ Ошибка: {e}")
 
 async def admin_requests_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
     try:
         requests_data = []
         with open(FILES['requests'], 'r', encoding='utf-8') as f:
@@ -668,6 +714,7 @@ async def admin_requests_command(update: Update, context: ContextTypes.DEFAULT_T
         await query.message.edit_text(f"❌ Ошибка: {e}")
 
 async def admin_errors_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
     try:
         if not FILES['errors'].exists():
             await query.message.edit_text("📭 Нет ошибок")
@@ -701,6 +748,7 @@ async def admin_errors_command(update: Update, context: ContextTypes.DEFAULT_TYP
         await query.message.edit_text(f"❌ Ошибка: {e}")
 
 async def admin_performance_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
     try:
         if not FILES['performance'].exists():
             await query.message.edit_text("📭 Нет данных о производительности")
@@ -744,6 +792,7 @@ async def admin_performance_command(update: Update, context: ContextTypes.DEFAUL
         await query.message.edit_text(f"❌ Ошибка: {e}")
 
 async def admin_prompts_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
     try:
         prompts = logger_system._read_json(FILES['popular_prompts'])
         
@@ -766,6 +815,7 @@ async def admin_prompts_command(update: Update, context: ContextTypes.DEFAULT_TY
         await query.message.edit_text(f"❌ Ошибка: {e}")
 
 async def admin_banned_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
     try:
         banned = logger_system._read_json(FILES['banned_users'])
         
@@ -786,6 +836,7 @@ async def admin_banned_command(update: Update, context: ContextTypes.DEFAULT_TYP
         await query.message.edit_text(f"❌ Ошибка: {e}")
 
 async def admin_export_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
     keyboard = InlineKeyboardMarkup([
         [InlineKeyboardButton("📊 Экспорт статистики", callback_data="admin_export_stats")],
         [InlineKeyboardButton("👥 Экспорт пользователей", callback_data="admin_export_users")],
@@ -799,6 +850,7 @@ async def admin_export_command(update: Update, context: ContextTypes.DEFAULT_TYP
                                  parse_mode="Markdown", reply_markup=keyboard)
 
 async def admin_export_all_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
     try:
         status_msg = await query.message.edit_text("📦 Создаю архив...")
         
@@ -825,6 +877,7 @@ async def admin_export_all_command(update: Update, context: ContextTypes.DEFAULT
         await query.message.edit_text(f"❌ Ошибка экспорта: {e}")
 
 async def admin_clear_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
     count = 0
     for file in TEMP_DIR.iterdir():
         if file.is_file():
@@ -836,6 +889,7 @@ async def admin_clear_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     await admin_panel_command(update, context)
 
 async def admin_health_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
     text = """
 🏥 **Health Check**
 
@@ -853,6 +907,7 @@ async def admin_health_command(update: Update, context: ContextTypes.DEFAULT_TYP
     await query.message.edit_text(text, parse_mode="Markdown", reply_markup=keyboard)
 
 async def admin_broadcast_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
     context.user_data['broadcast_mode'] = True
     await query.message.edit_text(
         "📢 **Рассылка**\n\n"
@@ -861,6 +916,7 @@ async def admin_broadcast_command(update: Update, context: ContextTypes.DEFAULT_
     )
 
 async def admin_settings_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
     text = f"""
 ⚙️ **Настройки бота**
 
@@ -1024,7 +1080,12 @@ async def handle_general_photo(update: Update, context: ContextTypes.DEFAULT_TYP
             return
 
         await status_msg.edit_text(f"🤖 Генерирую...")
-        result_url = await generate_with_agnes(image_url, prompt)
+        result_url = await generate_with_agnes(
+            image_url, 
+            prompt,
+            original_info['width'] if original_info else None,
+            original_info['height'] if original_info else None
+        )
 
         if result_url:
             processing_time = int(time.time() - start_time)
@@ -1128,7 +1189,12 @@ async def handle_custom_photo(update: Update, context: ContextTypes.DEFAULT_TYPE
                                      '')
             return
 
-        result_url = await generate_with_agnes(image_url, custom_prompt)
+        result_url = await generate_with_agnes(
+            image_url, 
+            custom_prompt,
+            original_info['width'] if original_info else None,
+            original_info['height'] if original_info else None
+        )
 
         if result_url:
             processing_time = int(time.time() - start_time)
