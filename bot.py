@@ -430,39 +430,50 @@ async def generate_with_agnes(image_url: str, prompt: str, original_width: int =
         # Определяем размеры с сохранением пропорций
         if original_width and original_height:
             # Максимальный размер для Agnes API
-            max_size = 2048
-            # Минимальный размер
+            max_size = 4096  # Можно увеличить до 4096
             min_size = 512
             
-            # Вычисляем масштаб, чтобы вписаться в максимальный размер
-            scale = min(max_size / max(original_width, original_height), 1)
+            # Вычисляем масштаб для большей стороны
+            max_dim = max(original_width, original_height)
             
-            # Применяем масштаб
-            width = int(original_width * scale)
-            height = int(original_height * scale)
+            # Если изображение уже меньше max_size - используем оригинальные размеры
+            if max_dim <= max_size:
+                width = original_width
+                height = original_height
+            else:
+                # Масштабируем пропорционально, чтобы большая сторона стала max_size
+                scale = max_size / max_dim
+                width = int(original_width * scale)
+                height = int(original_height * scale)
             
-            # Округляем до ближайшего числа, кратного 64 (рекомендация для моделей)
+            # Проверяем минимальные размеры
+            if width < min_size and height < min_size:
+                # Если оба размера меньше минимума - масштабируем до минимума
+                scale = min_size / min(width, height)
+                width = int(width * scale)
+                height = int(height * scale)
+            elif width < min_size:
+                width = min_size
+            elif height < min_size:
+                height = min_size
+            
+            # Округляем до ближайшего числа, кратного 64 (для оптимизации)
             width = ((width + 31) // 64) * 64
             height = ((height + 31) // 64) * 64
             
-            # Проверяем минимальный размер
-            if width < min_size:
-                width = min_size
-            if height < min_size:
-                height = min_size
-                
-            # Если изображение слишком вытянутое, ограничиваем соотношение сторон
-            aspect_ratio = width / height
-            if aspect_ratio > 3:  # слишком широкое
-                width = int(height * 3)
-                width = ((width + 31) // 64) * 64
-            elif aspect_ratio < 0.33:  # слишком высокое
-                height = int(width * 3)
-                height = ((height + 31) // 64) * 64
+            # Проверяем соотношение сторон (не более 4:1, чтобы не было слишком вытянутых)
+            aspect_ratio = max(width, height) / min(width, height)
+            if aspect_ratio > 4:
+                if width > height:
+                    width = int(height * 4)
+                    width = ((width + 31) // 64) * 64
+                else:
+                    height = int(width * 4)
+                    height = ((height + 31) // 64) * 64
                 
         else:
-            # Если размеры не указаны, используем стандартные
-            width, height = 1024, 1024
+            # Если размеры не указаны, используем стандартные (можно изменить)
+            width, height = 1024, 768  # или любые другие
 
         logger.info(f"Генерация с размерами: {width}x{height} (оригинал: {original_width}x{original_height})")
 
@@ -502,7 +513,7 @@ async def generate_with_agnes(image_url: str, prompt: str, original_width: int =
     except Exception as e:
         logger_system.log_error(None, "api_exception", str(e), traceback.format_exc())
         return None
-
+        
 async def download_result(url, output_path):
     try:
         response = requests.get(url, timeout=60)
