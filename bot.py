@@ -215,7 +215,6 @@ class LoggerSystem:
             if today not in daily:
                 daily[today] = {'requests': 0, 'users': [], 'success': 0, 'errors': 0}
             daily[today]['requests'] += 1
-            # Исправлено: используем список вместо set
             if user_info['user_id'] not in daily[today]['users']:
                 daily[today]['users'].append(user_info['user_id'])
             if status == 'success':
@@ -397,7 +396,6 @@ def upload_to_temp_hosting(image_path):
         url = "https://freeimage.host/api/1/upload"
         api_key = "6d207e02198a847aa98d0a2a901485a5"
 
-        # Проверяем размер файла в МБ
         file_size_mb = os.path.getsize(image_path) / (1024 * 1024)
         if file_size_mb > MAX_IMAGE_SIZE_MB:
             logger_system.log_error(None, "file_too_large", f"File size {file_size_mb:.2f}MB exceeds limit {MAX_IMAGE_SIZE_MB}MB")
@@ -471,7 +469,6 @@ async def generate_with_agnes(image_url: str, prompt: str, original_width: int =
                 else:
                     height = int(width * 4)
                     height = ((height + 31) // 64) * 64
-                
         else:
             # Если размеры не указаны, используем стандартные
             width, height = 1024, 1024
@@ -1092,6 +1089,8 @@ async def handle_general_photo(update: Update, context: ContextTypes.DEFAULT_TYP
             return
 
         await status_msg.edit_text(f"🤖 Генерирую...")
+        
+        # Передаем оригинальные размеры для сохранения пропорций
         result_url = await generate_with_agnes(
             image_url, 
             prompt,
@@ -1115,7 +1114,8 @@ async def handle_general_photo(update: Update, context: ContextTypes.DEFAULT_TYP
                         f,
                         caption=f"✅ **Готово!**\n\n"
                                f"⏱️ {processing_time} сек.\n"
-                               f"📐 Размер: {result_resolution}\n\n"
+                               f"📐 Исходный размер: {original_resolution if original_info else 'неизвестно'}\n"
+                               f"📐 Результат: {result_resolution}\n\n"
                                f"📤 Отправь /start для новой обработки"
                     )
                 
@@ -1201,6 +1201,7 @@ async def handle_custom_photo(update: Update, context: ContextTypes.DEFAULT_TYPE
                                      '')
             return
 
+        # Передаем оригинальные размеры для сохранения пропорций
         result_url = await generate_with_agnes(
             image_url, 
             custom_prompt,
@@ -1223,7 +1224,8 @@ async def handle_custom_photo(update: Update, context: ContextTypes.DEFAULT_TYPE
                         caption=f"✅ **Готово!**\n\n"
                                f"📝 Запрос: «{custom_prompt[:80]}»\n"
                                f"⏱️ {processing_time} сек.\n"
-                               f"📐 Размер: {result_resolution}"
+                               f"📐 Исходный размер: {original_resolution if original_info else 'неизвестно'}\n"
+                               f"📐 Результат: {result_resolution}"
                     )
 
                 output_path.unlink(missing_ok=True)
