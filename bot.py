@@ -213,14 +213,15 @@ class LoggerSystem:
             today = datetime.now().strftime('%Y-%m-%d')
             daily = self._read_json(FILES['daily_stats'])
             if today not in daily:
-                daily[today] = {'requests': 0, 'users': set(), 'success': 0, 'errors': 0}
+                daily[today] = {'requests': 0, 'users': [], 'success': 0, 'errors': 0}
             daily[today]['requests'] += 1
-            daily[today]['users'].add(user_info['user_id'])
+            # Исправлено: используем список вместо set
+            if user_info['user_id'] not in daily[today]['users']:
+                daily[today]['users'].append(user_info['user_id'])
             if status == 'success':
                 daily[today]['success'] += 1
             else:
                 daily[today]['errors'] += 1
-            daily[today]['users'] = list(daily[today]['users'])
             self._write_json(FILES['daily_stats'], daily)
             
         except Exception as e:
@@ -430,10 +431,10 @@ async def generate_with_agnes(image_url: str, prompt: str, original_width: int =
         # Определяем размеры с сохранением пропорций
         if original_width and original_height:
             # Максимальный размер для Agnes API
-            max_size = 4096  # Можно увеличить до 4096
+            max_size = 2048
             min_size = 512
             
-            # Вычисляем масштаб для большей стороны
+            # Находим большую сторону
             max_dim = max(original_width, original_height)
             
             # Если изображение уже меньше max_size - используем оригинальные размеры
@@ -457,11 +458,11 @@ async def generate_with_agnes(image_url: str, prompt: str, original_width: int =
             elif height < min_size:
                 height = min_size
             
-            # Округляем до ближайшего числа, кратного 64 (для оптимизации)
+            # Округляем до ближайшего числа, кратного 64 (требование API)
             width = ((width + 31) // 64) * 64
             height = ((height + 31) // 64) * 64
             
-            # Проверяем соотношение сторон (не более 4:1, чтобы не было слишком вытянутых)
+            # Проверяем соотношение сторон (не более 4:1)
             aspect_ratio = max(width, height) / min(width, height)
             if aspect_ratio > 4:
                 if width > height:
@@ -472,8 +473,8 @@ async def generate_with_agnes(image_url: str, prompt: str, original_width: int =
                     height = ((height + 31) // 64) * 64
                 
         else:
-            # Если размеры не указаны, используем стандартные (можно изменить)
-            width, height = 1024, 768  # или любые другие
+            # Если размеры не указаны, используем стандартные
+            width, height = 1024, 1024
 
         logger.info(f"Генерация с размерами: {width}x{height} (оригинал: {original_width}x{original_height})")
 
@@ -513,7 +514,7 @@ async def generate_with_agnes(image_url: str, prompt: str, original_width: int =
     except Exception as e:
         logger_system.log_error(None, "api_exception", str(e), traceback.format_exc())
         return None
-        
+
 async def download_result(url, output_path):
     try:
         response = requests.get(url, timeout=60)
