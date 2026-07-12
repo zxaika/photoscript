@@ -429,7 +429,7 @@ async def generate_with_agnes(image_url: str, prompt: str):
 
         # Отправляем запрос БЕЗ указания width и height
         payload = {
-            "model": "agnes-image-2.0",
+            "model": "agnes-image-2.0-flash",
             "prompt": prompt,
             "tags": ["img2img"],
             "extra_body": {
