@@ -42,7 +42,6 @@ TEMP_DIR.mkdir(exist_ok=True)
 BACKUP_DIR.mkdir(exist_ok=True)
 
 # ========== НАСТРОЙКА ЛОГГИРОВАНИЯ ==========
-# Основной логгер
 logging.basicConfig(
     level=getattr(logging, LOG_LEVEL),
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -53,7 +52,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Отдельный логгер для ошибок
 error_logger = logging.getLogger('errors')
 error_handler = logging.FileHandler(LOGS_DIR / "errors.log", encoding='utf-8')
 error_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
@@ -73,7 +71,6 @@ FILES = {
     'system_health': LOGS_DIR / "system_health.json"
 }
 
-# Создаем файлы с заголовками
 def init_csv_file(filepath, headers):
     if not filepath.exists():
         with open(filepath, 'w', newline='', encoding='utf-8') as f:
@@ -85,7 +82,6 @@ init_csv_file(FILES['users'], ['user_id', 'username', 'first_name', 'last_name',
 init_csv_file(FILES['requests'], ['timestamp', 'user_id', 'username', 'full_name', 'mode', 'prompt', 'processing_time', 'status', 'image_size', 'image_format', 'original_resolution', 'result_resolution'])
 init_csv_file(FILES['performance'], ['timestamp', 'request_id', 'user_id', 'operation', 'duration_ms', 'status'])
 
-# Инициализация JSON файлов
 def init_json_file(filepath, default_data):
     if not filepath.exists():
         with open(filepath, 'w', encoding='utf-8') as f:
@@ -118,10 +114,9 @@ class LoggerSystem:
     def __init__(self):
         self.request_counter = 0
         self.start_time = datetime.now()
-        self.user_requests = defaultdict(list)  # для rate limiting
+        self.user_requests = defaultdict(list)
         
     def log_user(self, user_info, language='unknown'):
-        """Логирует пользователя"""
         try:
             users = self._read_csv(FILES['users'])
             user_exists = False
@@ -150,7 +145,6 @@ class LoggerSystem:
             
             self._write_csv(FILES['users'], users)
             
-            # Обновляем статистику
             stats = self._read_json(FILES['stats'])
             stats['total_users'] = len(users)
             stats['users'][user_info['user_id']] = {
@@ -165,9 +159,7 @@ class LoggerSystem:
 
     def log_request(self, user_info, mode, prompt, processing_time, status='success', 
                    image_size=0, image_format='jpg', original_resolution='', result_resolution=''):
-        """Логирует запрос с разрешением"""
         try:
-            # Логируем в CSV
             with open(FILES['requests'], 'a', newline='', encoding='utf-8') as f:
                 writer = csv.writer(f)
                 writer.writerow([
@@ -185,7 +177,6 @@ class LoggerSystem:
                     result_resolution
                 ])
             
-            # Обновляем статистику
             stats = self._read_json(FILES['stats'])
             stats['total_requests'] += 1
             if status == 'success':
@@ -201,13 +192,11 @@ class LoggerSystem:
             stats['total_processing_time'] += processing_time
             stats['avg_processing_time'] = stats['total_processing_time'] / stats['total_requests']
             
-            # Обновляем пользователя
             if user_info['user_id'] in stats['users']:
                 stats['users'][user_info['user_id']]['requests'] += 1
                 
             self._write_json(FILES['stats'], stats)
             
-            # Обновляем популярные промпты
             if status == 'success' and len(prompt) > 10:
                 prompts = self._read_json(FILES['popular_prompts'])
                 prompt_key = prompt[:50]
@@ -221,7 +210,6 @@ class LoggerSystem:
                     }
                 self._write_json(FILES['popular_prompts'], prompts)
                 
-            # Обновляем дневную статистику
             today = datetime.now().strftime('%Y-%m-%d')
             daily = self._read_json(FILES['daily_stats'])
             if today not in daily:
@@ -239,7 +227,6 @@ class LoggerSystem:
             error_logger.error(f"Error logging request: {e}\n{traceback.format_exc()}")
 
     def log_error(self, user_info, error_type, error_message, stack_trace=None):
-        """Логирует ошибку"""
         try:
             with open(FILES['errors'], 'a', newline='', encoding='utf-8') as f:
                 writer = csv.writer(f)
@@ -261,7 +248,6 @@ class LoggerSystem:
             error_logger.error(f"Error logging error: {e}")
 
     def log_performance(self, user_id, operation, duration_ms, status='success'):
-        """Логирует производительность"""
         try:
             with open(FILES['performance'], 'a', newline='', encoding='utf-8') as f:
                 writer = csv.writer(f)
@@ -278,7 +264,6 @@ class LoggerSystem:
             error_logger.error(f"Error logging performance: {e}")
 
     def check_rate_limit(self, user_id):
-        """Проверяет ограничение по запросам"""
         now = datetime.now()
         user_requests = self.user_requests[user_id]
         user_requests = [t for t in user_requests if (now - t).seconds < 60]
@@ -290,7 +275,6 @@ class LoggerSystem:
         return True
 
     def is_user_banned(self, user_id):
-        """Проверяет, забанен ли пользователь"""
         try:
             banned = self._read_json(FILES['banned_users'])
             return user_id in [u['user_id'] for u in banned]
@@ -298,7 +282,6 @@ class LoggerSystem:
             return False
 
     def ban_user(self, user_id, reason=''):
-        """Банит пользователя"""
         try:
             banned = self._read_json(FILES['banned_users'])
             if user_id not in [u['user_id'] for u in banned]:
@@ -311,7 +294,6 @@ class LoggerSystem:
             return False
 
     def unban_user(self, user_id):
-        """Разбанивает пользователя"""
         try:
             banned = self._read_json(FILES['banned_users'])
             banned = [u for u in banned if u['user_id'] != user_id]
@@ -322,7 +304,6 @@ class LoggerSystem:
             return False
 
     def get_stats(self):
-        """Получает полную статистику"""
         try:
             stats = self._read_json(FILES['stats'])
             daily = self._read_json(FILES['daily_stats'])
@@ -391,12 +372,10 @@ class LoggerSystem:
         except Exception as e:
             error_logger.error(f"Error writing JSON: {e}")
 
-# ========== ИНИЦИАЛИЗАЦИЯ ЛОГГЕРА ==========
 logger_system = LoggerSystem()
 
 # ========== ФУНКЦИИ ДЛЯ РАБОТЫ С ИЗОБРАЖЕНИЯМИ ==========
 def get_image_info(image_path):
-    """Получает информацию об изображении"""
     try:
         with Image.open(image_path) as img:
             width, height = img.size
@@ -406,53 +385,21 @@ def get_image_info(image_path):
                 'height': height,
                 'resolution': f"{width}x{height}",
                 'format': format,
-                'size_kb': os.path.getsize(image_path) 
+                'size_kb': os.path.getsize(image_path) // 1024
             }
     except Exception as e:
         error_logger.error(f"Error getting image info: {e}")
         return None
 
-def resize_image_to_fit(image_path, max_size=2048):
-    """Изменяет размер изображения, сохраняя пропорции"""
-    try:
-        with Image.open(image_path) as img:
-            # Получаем текущий размер
-            width, height = img.size
-            
-            # Если изображение меньше максимального размера, не меняем
-            if width <= max_size and height <= max_size:
-                return image_path
-            
-            # Вычисляем новый размер с сохранением пропорций
-            if width > height:
-                new_width = max_size
-                new_height = int(height * (max_size / width))
-            else:
-                new_height = max_size
-                new_width = int(width * (max_size / height))
-            
-            # Изменяем размер
-            img_resized = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
-            
-            # Сохраняем с тем же форматом
-            output_path = image_path.parent / f"resized_{image_path.name}"
-            img_resized.save(output_path, quality=95, optimize=True)
-            
-            return str(output_path)
-    except Exception as e:
-        error_logger.error(f"Error resizing image: {e}")
-        return image_path
-
 def upload_to_temp_hosting(image_path):
-    """Загружает фото на бесплатный хостинг, возвращает URL"""
     try:
         url = "https://freeimage.host/api/1/upload"
         api_key = "6d207e02198a847aa98d0a2a901485a5"
 
-        # Проверяем размер файла
-        file_size = os.path.getsize(image_path) / (1024 * 1024)
-        if file_size > MAX_IMAGE_SIZE_MB:
-            logger_system.log_error(None, "file_too_large", f"File size {file_size:.2f}MB exceeds limit {MAX_IMAGE_SIZE_MB}MB")
+        # Проверяем размер файла в МБ
+        file_size_mb = os.path.getsize(image_path) / (1024 * 1024)
+        if file_size_mb > MAX_IMAGE_SIZE_MB:
+            logger_system.log_error(None, "file_too_large", f"File size {file_size_mb:.2f}MB exceeds limit {MAX_IMAGE_SIZE_MB}MB")
             return None
 
         with open(image_path, 'rb') as f:
@@ -469,8 +416,7 @@ def upload_to_temp_hosting(image_path):
         error_logger.error(f"Upload error: {e}\n{traceback.format_exc()}")
         return None
 
-async def generate_with_agnes(image_url: str, prompt: str, original_resolution: str = ""):
-    """Отправляет запрос в Agnes API с сохранением размера"""
+async def generate_with_agnes(image_url: str, prompt: str):
     if not AGNES_API_KEY:
         logger_system.log_error(None, "missing_api_key", "AGNES_API_KEY not set")
         return None
@@ -481,21 +427,15 @@ async def generate_with_agnes(image_url: str, prompt: str, original_resolution: 
             "Content-Type": "application/json"
         }
 
-        # Используем специальный промпт для сохранения качества и размера
-        enhanced_prompt = f"{prompt} Maintain original image quality and resolution. Do not upscale or downscale. Keep the same aspect ratio and dimensions."
-        
         payload = {
             "model": "agnes-image-2.0-flash",
-            "prompt": enhanced_prompt,
-            "tags": ["img2img", "preserve-resolution"],
+            "prompt": prompt,
+            "tags": ["img2img"],
             "extra_body": {
                 "image": [image_url],
                 "response_format": "url"
             }
         }
-
-        # НЕ указываем size, чтобы API сохранил исходный размер
-        # payload["size"] не передаем
 
         start_time = time.time()
         response = requests.post(AGNES_API_URL, headers=headers, json=payload, timeout=120)
@@ -507,8 +447,7 @@ async def generate_with_agnes(image_url: str, prompt: str, original_resolution: 
         if response.status_code == 200:
             data = response.json()
             if "data" in data and len(data["data"]) > 0:
-                result_url = data["data"][0]["url"]
-                return result_url
+                return data["data"][0]["url"]
             else:
                 logger_system.log_error(None, "api_invalid_response", f"Invalid response format: {data}")
         else:
@@ -521,32 +460,13 @@ async def generate_with_agnes(image_url: str, prompt: str, original_resolution: 
         logger_system.log_error(None, "api_exception", str(e), traceback.format_exc())
         return None
 
-async def download_and_process_result(url, output_path, original_resolution):
-    """Скачивает и обрабатывает результат"""
+async def download_result(url, output_path):
     try:
         response = requests.get(url, timeout=60)
         if response.status_code == 200:
-            # Сохраняем результат
             with open(output_path, 'wb') as f:
                 f.write(response.content)
-            
-            # Получаем информацию о результате
-            result_info = get_image_info(output_path)
-            
-            # Если результат имеет другое разрешение, пытаемся восстановить оригинальное
-            if result_info and original_resolution:
-                orig_width, orig_height = map(int, original_resolution.split('x'))
-                if result_info['width'] != orig_width or result_info['height'] != orig_height:
-                    # Пробуем изменить размер до оригинального
-                    try:
-                        with Image.open(output_path) as img:
-                            img_resized = img.resize((orig_width, orig_height), Image.Resampling.LANCZOS)
-                            img_resized.save(output_path, quality=95)
-                            result_info = get_image_info(output_path)
-                    except Exception as e:
-                        error_logger.error(f"Error resizing result: {e}")
-            
-            return result_info
+            return get_image_info(output_path)
         return None
     except Exception as e:
         error_logger.error(f"Error downloading result: {e}")
@@ -554,7 +474,6 @@ async def download_and_process_result(url, output_path, original_resolution):
 
 # ========== АДМИН-КОМАНДЫ ==========
 async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Главная админ-панель"""
     if update.effective_user.id != ADMIN_ID:
         await update.message.reply_text("⛔ Нет доступа")
         return
@@ -606,7 +525,6 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(text, parse_mode="Markdown", reply_markup=keyboard)
 
 async def admin_callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработчик кнопок админ-панели"""
     query = update.callback_query
     await query.answer()
     
@@ -644,7 +562,6 @@ async def admin_callback_handler(update: Update, context: ContextTypes.DEFAULT_T
         await admin_panel_command(update, context)
 
 async def admin_stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Показывает детальную статистику"""
     stats = logger_system.get_stats()
     
     text = f"""
@@ -683,7 +600,6 @@ async def admin_stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     await query.message.edit_text(text, parse_mode="Markdown", reply_markup=keyboard)
 
 async def admin_users_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Показывает список пользователей"""
     try:
         users = []
         with open(FILES['users'], 'r', encoding='utf-8') as f:
@@ -714,7 +630,6 @@ async def admin_users_command(update: Update, context: ContextTypes.DEFAULT_TYPE
         await query.message.edit_text(f"❌ Ошибка: {e}")
 
 async def admin_requests_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Показывает последние запросы"""
     try:
         requests_data = []
         with open(FILES['requests'], 'r', encoding='utf-8') as f:
@@ -735,7 +650,6 @@ async def admin_requests_command(update: Update, context: ContextTypes.DEFAULT_T
                 status_emoji = "✅" if req['status'] == 'success' else "❌"
                 time_str = f"{req['processing_time']}с" if req['processing_time'] else "0с"
                 
-                # Добавляем информацию о разрешении
                 res_info = ""
                 if req.get('original_resolution') and req.get('result_resolution'):
                     res_info = f" [{req['original_resolution']} → {req['result_resolution']}]"
@@ -754,7 +668,6 @@ async def admin_requests_command(update: Update, context: ContextTypes.DEFAULT_T
         await query.message.edit_text(f"❌ Ошибка: {e}")
 
 async def admin_errors_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Показывает ошибки"""
     try:
         if not FILES['errors'].exists():
             await query.message.edit_text("📭 Нет ошибок")
@@ -788,7 +701,6 @@ async def admin_errors_command(update: Update, context: ContextTypes.DEFAULT_TYP
         await query.message.edit_text(f"❌ Ошибка: {e}")
 
 async def admin_performance_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Показывает производительность"""
     try:
         if not FILES['performance'].exists():
             await query.message.edit_text("📭 Нет данных о производительности")
@@ -832,7 +744,6 @@ async def admin_performance_command(update: Update, context: ContextTypes.DEFAUL
         await query.message.edit_text(f"❌ Ошибка: {e}")
 
 async def admin_prompts_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Показывает популярные промпты"""
     try:
         prompts = logger_system._read_json(FILES['popular_prompts'])
         
@@ -855,7 +766,6 @@ async def admin_prompts_command(update: Update, context: ContextTypes.DEFAULT_TY
         await query.message.edit_text(f"❌ Ошибка: {e}")
 
 async def admin_banned_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Показывает бан-лист"""
     try:
         banned = logger_system._read_json(FILES['banned_users'])
         
@@ -876,7 +786,6 @@ async def admin_banned_command(update: Update, context: ContextTypes.DEFAULT_TYP
         await query.message.edit_text(f"❌ Ошибка: {e}")
 
 async def admin_export_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Экспорт данных"""
     keyboard = InlineKeyboardMarkup([
         [InlineKeyboardButton("📊 Экспорт статистики", callback_data="admin_export_stats")],
         [InlineKeyboardButton("👥 Экспорт пользователей", callback_data="admin_export_users")],
@@ -890,7 +799,6 @@ async def admin_export_command(update: Update, context: ContextTypes.DEFAULT_TYP
                                  parse_mode="Markdown", reply_markup=keyboard)
 
 async def admin_export_all_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Экспортирует все данные в ZIP архив"""
     try:
         status_msg = await query.message.edit_text("📦 Создаю архив...")
         
@@ -917,7 +825,6 @@ async def admin_export_all_command(update: Update, context: ContextTypes.DEFAULT
         await query.message.edit_text(f"❌ Ошибка экспорта: {e}")
 
 async def admin_clear_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Очищает временные файлы"""
     count = 0
     for file in TEMP_DIR.iterdir():
         if file.is_file():
@@ -929,7 +836,6 @@ async def admin_clear_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     await admin_panel_command(update, context)
 
 async def admin_health_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Проверка здоровья системы"""
     text = """
 🏥 **Health Check**
 
@@ -937,7 +843,6 @@ async def admin_health_command(update: Update, context: ContextTypes.DEFAULT_TYP
 ✅ API ключ установлен
 ✅ Папки созданы
 ✅ Логи ведутся
-✅ Обработка изображений с сохранением разрешения
 
 📊 Состояние: OK
 """
@@ -948,7 +853,6 @@ async def admin_health_command(update: Update, context: ContextTypes.DEFAULT_TYP
     await query.message.edit_text(text, parse_mode="Markdown", reply_markup=keyboard)
 
 async def admin_broadcast_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Рассылка сообщений"""
     context.user_data['broadcast_mode'] = True
     await query.message.edit_text(
         "📢 **Рассылка**\n\n"
@@ -957,17 +861,12 @@ async def admin_broadcast_command(update: Update, context: ContextTypes.DEFAULT_
     )
 
 async def admin_settings_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Настройки бота"""
     text = f"""
 ⚙️ **Настройки бота**
 
 📏 Максимальный размер файла: {MAX_IMAGE_SIZE_MB} MB
 ⏱️ Максимум запросов в минуту: {MAX_REQUESTS_PER_MINUTE}
-🔄 Размер изображения: СОХРАНЯЕТСЯ ОРИГИНАЛЬНЫЙ
 📊 Уровень логирования: {LOG_LEVEL}
-
-✅ Изображения обрабатываются в исходном разрешении
-✅ Пропорции сохраняются
 
 ⚠️ Для изменения настроек отредактируйте .env файл
     """
@@ -978,7 +877,6 @@ async def admin_settings_command(update: Update, context: ContextTypes.DEFAULT_T
     await query.message.edit_text(text, parse_mode="Markdown", reply_markup=keyboard)
 
 async def admin_panel_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Возврат в админ-панель"""
     await admin_panel(update, context)
 
 # ========== ФУНКЦИИ БОТА ==========
@@ -1012,13 +910,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 ✏️ **Свой запрос** — напиши что хочешь сделать с фото
 
 💰 **Бесплатно** | ⏱️ 10-30 сек
-
     """
     await update.message.reply_text(welcome_text, parse_mode="Markdown", reply_markup=keyboard)
     context.user_data['state'] = 0
 
 async def mode_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработчик выбора режима"""
     query = update.callback_query
     await query.answer()
     
@@ -1036,9 +932,7 @@ async def mode_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data['state'] = None
         await query.message.reply_text(
             "🧹 **Режим: Убрать тени + белый фон + студийный свет**\n\n"
-            "📤 Отправь фото:\n\n"
-            "✅ **Размер изображения сохранится**\n"
-            "✅ Пропорции останутся прежними"
+            "📤 Отправь фото:"
         )
 
     elif mode == "mode_custom":
@@ -1051,13 +945,10 @@ async def mode_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "• «Сделай фото в стиле киберпанк»\n"
             "• «Добавь закат»\n"
             "• «Убери людей с фото»\n\n"
-            "✅ **Размер изображения сохранится**\n"
-            "✅ Пропорции останутся прежними\n\n"
             "Напиши свой запрос:"
         )
 
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обрабатывает фото в зависимости от выбранного режима"""
     user = update.effective_user
     user_info = get_user_info(user)
     
@@ -1082,13 +973,12 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await handle_general_photo(update, context)
 
 async def handle_general_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработка для режима shadows с сохранением размера"""
     user = update.effective_user
     user_info = get_user_info(user)
     mode = context.user_data.get('mode', 'shadows')
 
     if mode == 'shadows':
-        prompt = "Remove all shadows from this photo completely. Make background pure white, studio lighting, even illumination, no shadows visible, professional product photography style, high quality, clean look, shadowless, bright and clear image. Maintain original image quality and resolution. Do not upscale or downscale. Keep the same aspect ratio and dimensions."
+        prompt = "Remove all shadows from this photo completely. Make background pure white, studio lighting, even illumination, no shadows visible, professional product photography style, high quality, clean look, shadowless, bright and clear image"
         mode_name = "Убрать тени + белый фон + студийный свет"
 
     status_msg = await update.message.reply_text(
@@ -1097,19 +987,14 @@ async def handle_general_photo(update: Update, context: ContextTypes.DEFAULT_TYP
     )
 
     photo_file = await update.message.photo[-1].get_file()
-    photo_info = update.message.photo[-1]
-    
     input_path = TEMP_DIR / f"input_{user.id}_{int(time.time())}.jpg"
-    processed_path = None
     
     start_time = time.time()
 
     try:
-        # Скачиваем фото
         await status_msg.edit_text(f"📥 Скачиваю фото...")
         await photo_file.download_to_drive(str(input_path))
         
-        # Получаем информацию об оригинальном изображении
         original_info = get_image_info(input_path)
         if original_info:
             original_resolution = original_info['resolution']
@@ -1121,10 +1006,9 @@ async def handle_general_photo(update: Update, context: ContextTypes.DEFAULT_TYP
                 f"• Разрешение: {original_resolution}\n"
                 f"• Формат: {image_format}\n"
                 f"• Размер: {image_size} KB\n\n"
-                f"🔄 Обрабатываю с сохранением размера..."
+                f"🔄 Обрабатываю..."
             )
         
-        # Загружаем на хостинг
         await status_msg.edit_text(f"📤 Загружаю фото на хостинг...")
         image_url = upload_to_temp_hosting(str(input_path))
 
@@ -1139,38 +1023,29 @@ async def handle_general_photo(update: Update, context: ContextTypes.DEFAULT_TYP
                                      '')
             return
 
-        # Генерируем с сохранением размера
-        await status_msg.edit_text(f"🤖 Генерирую с сохранением размера...")
-        result_url = await generate_with_agnes(image_url, prompt, original_info['resolution'] if original_info else "")
+        await status_msg.edit_text(f"🤖 Генерирую...")
+        result_url = await generate_with_agnes(image_url, prompt)
 
         if result_url:
             processing_time = int(time.time() - start_time)
             
-            # Скачиваем и обрабатываем результат
             await status_msg.edit_text(f"📥 Скачиваю результат...")
             output_path = TEMP_DIR / f"output_{user.id}_{int(time.time())}.png"
             
-            result_info = await download_and_process_result(
-                result_url, 
-                output_path, 
-                original_info['resolution'] if original_info else ""
-            )
+            result_info = await download_result(result_url, output_path)
             
             if result_info:
                 result_resolution = result_info['resolution']
                 
-                # Отправляем результат
                 with open(output_path, 'rb') as f:
                     await update.message.reply_photo(
                         f,
                         caption=f"✅ **Готово!**\n\n"
                                f"⏱️ {processing_time} сек.\n"
-                               f"📐 Размер: {result_resolution}\n"
-                               f"🔄 Размер сохранен в оригинале\n\n"
+                               f"📐 Размер: {result_resolution}\n\n"
                                f"📤 Отправь /start для новой обработки"
                     )
                 
-                # Логируем успешный запрос с информацией о разрешении
                 logger_system.log_request(
                     user_info, mode_name, prompt, processing_time, 
                     'success', 
@@ -1198,20 +1073,11 @@ async def handle_general_photo(update: Update, context: ContextTypes.DEFAULT_TYP
     except Exception as e:
         await status_msg.edit_text(f"❌ Ошибка: {str(e)[:100]}")
         logger_system.log_error(user_info, "processing_error", str(e), traceback.format_exc())
-        logger_system.log_request(user_info, mode_name, prompt, 
-                                 int(time.time() - start_time), 'error',
-                                 image_size if 'original_info' in locals() and original_info else 0,
-                                 image_format if 'original_info' in locals() and original_info else 'jpg',
-                                 original_resolution if 'original_info' in locals() and original_info else '',
-                                 '')
 
     finally:
         input_path.unlink(missing_ok=True)
-        if processed_path and Path(processed_path).exists():
-            Path(processed_path).unlink(missing_ok=True)
 
 async def handle_custom_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработка для режима 'свой запрос' с сохранением размера"""
     user = update.effective_user
     user_info = get_user_info(user)
 
@@ -1238,7 +1104,6 @@ async def handle_custom_photo(update: Update, context: ContextTypes.DEFAULT_TYPE
     try:
         await photo_file.download_to_drive(str(input_path))
         
-        # Получаем информацию об оригинале
         original_info = get_image_info(input_path)
         if original_info:
             original_resolution = original_info['resolution']
@@ -1249,7 +1114,7 @@ async def handle_custom_photo(update: Update, context: ContextTypes.DEFAULT_TYPE
                 f"📸 **Оригинал:**\n"
                 f"• Разрешение: {original_resolution}\n"
                 f"• Формат: {image_format}\n\n"
-                f"🔄 Обрабатываю с сохранением размера..."
+                f"🔄 Обрабатываю..."
             )
         
         image_url = upload_to_temp_hosting(str(input_path))
@@ -1263,19 +1128,13 @@ async def handle_custom_photo(update: Update, context: ContextTypes.DEFAULT_TYPE
                                      '')
             return
 
-        # Добавляем инструкцию по сохранению размера в промпт
-        enhanced_prompt = f"{custom_prompt}. Maintain original image quality and resolution. Do not upscale or downscale. Keep the same aspect ratio and dimensions."
-        result_url = await generate_with_agnes(image_url, enhanced_prompt, original_info['resolution'] if original_info else "")
+        result_url = await generate_with_agnes(image_url, custom_prompt)
 
         if result_url:
             processing_time = int(time.time() - start_time)
             
             output_path = TEMP_DIR / f"output_{user.id}_{int(time.time())}.png"
-            result_info = await download_and_process_result(
-                result_url, 
-                output_path, 
-                original_info['resolution'] if original_info else ""
-            )
+            result_info = await download_result(result_url, output_path)
             
             if result_info:
                 result_resolution = result_info['resolution']
@@ -1286,8 +1145,7 @@ async def handle_custom_photo(update: Update, context: ContextTypes.DEFAULT_TYPE
                         caption=f"✅ **Готово!**\n\n"
                                f"📝 Запрос: «{custom_prompt[:80]}»\n"
                                f"⏱️ {processing_time} сек.\n"
-                               f"📐 Размер: {result_resolution}\n"
-                               f"🔄 Размер сохранен в оригинале"
+                               f"📐 Размер: {result_resolution}"
                     )
 
                 output_path.unlink(missing_ok=True)
@@ -1321,7 +1179,6 @@ async def handle_custom_photo(update: Update, context: ContextTypes.DEFAULT_TYPE
         input_path.unlink(missing_ok=True)
 
 async def handle_custom_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Сохраняет кастомный промпт"""
     user = update.effective_user
     user_info = get_user_info(user)
     
@@ -1341,8 +1198,7 @@ async def handle_custom_prompt(update: Update, context: ContextTypes.DEFAULT_TYP
         await update.message.reply_text(
             f"✅ **Запрос сохранен!**\n\n"
             f"📝 «{custom_prompt}»\n\n"
-            f"📤 Теперь отправь фото:\n\n"
-            f"🔄 Размер сохранится в оригинале"
+            f"📤 Теперь отправь фото:"
         )
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1357,7 +1213,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/admin — админ-панель (только для администратора)\n\n"
         "**Режимы:**\n"
         "🧹 Убрать тени — белый фон + студийный свет\n"
-        "✏️ Свой запрос — напиши что хочешь\n\n"
+        "✏️ Свой запрос — напиши что хочешь",
         parse_mode="Markdown"
     )
 
@@ -1393,13 +1249,11 @@ def main():
 
     app = Application.builder().token(BOT_TOKEN).connect_timeout(60).read_timeout(60).build()
 
-    # Команды
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("cancel", cancel))
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(CommandHandler("admin", admin_panel))
 
-    # Обработчики админ-панели
     app.add_handler(CallbackQueryHandler(admin_callback_handler, pattern="^admin_"))
     app.add_handler(CallbackQueryHandler(mode_handler, pattern="^mode_"))
     app.add_handler(CallbackQueryHandler(mode_handler, pattern="^cancel$"))
