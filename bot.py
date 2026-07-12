@@ -1054,7 +1054,7 @@ async def handle_general_photo(update: Update, context: ContextTypes.DEFAULT_TYP
         parse_mode="Markdown"
     )
 
-    photo_file = await update.message.photo[-1].get_file()
+    photo_file = await update.message.photo[0].get_file()
     input_path = TEMP_DIR / f"input_{user.id}_{int(time.time())}.jpg"
     
     start_time = time.time()
