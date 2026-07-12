@@ -415,7 +415,8 @@ def upload_to_temp_hosting(image_path):
         error_logger.error(f"Upload error: {e}\n{traceback.format_exc()}")
         return None
 
-async def generate_with_agnes(image_url: str, prompt: str, original_width: int = None, original_height: int = None):
+async def generate_with_agnes(image_url: str, prompt: str):
+    """Генерация изображения через Agnes API без указания размеров"""
     if not AGNES_API_KEY:
         logger_system.log_error(None, "missing_api_key", "AGNES_API_KEY not set")
         return None
@@ -426,55 +427,7 @@ async def generate_with_agnes(image_url: str, prompt: str, original_width: int =
             "Content-Type": "application/json"
         }
 
-        # Определяем размеры с сохранением пропорций
-        if original_width and original_height:
-            # Максимальный размер для Agnes API
-            max_size = 2048
-            min_size = 512
-            
-            # Находим большую сторону
-            max_dim = max(original_width, original_height)
-            
-            # Если изображение уже меньше max_size - используем оригинальные размеры
-            if max_dim <= max_size:
-                width = original_width
-                height = original_height
-            else:
-                # Масштабируем пропорционально, чтобы большая сторона стала max_size
-                scale = max_size / max_dim
-                width = int(original_width * scale)
-                height = int(original_height * scale)
-            
-            # Проверяем минимальные размеры
-            if width < min_size and height < min_size:
-                # Если оба размера меньше минимума - масштабируем до минимума
-                scale = min_size / min(width, height)
-                width = int(width * scale)
-                height = int(height * scale)
-            elif width < min_size:
-                width = min_size
-            elif height < min_size:
-                height = min_size
-            
-            # Округляем до ближайшего числа, кратного 64 (требование API)
-            width = ((width + 31) // 64) * 64
-            height = ((height + 31) // 64) * 64
-            
-            # Проверяем соотношение сторон (не более 4:1)
-            aspect_ratio = max(width, height) / min(width, height)
-            if aspect_ratio > 4:
-                if width > height:
-                    width = int(height * 4)
-                    width = ((width + 31) // 64) * 64
-                else:
-                    height = int(width * 4)
-                    height = ((height + 31) // 64) * 64
-        else:
-            # Если размеры не указаны, используем стандартные
-            width, height = 1024, 1024
-
-        logger.info(f"Генерация с размерами: {width}x{height} (оригинал: {original_width}x{original_height})")
-
+        # Отправляем запрос БЕЗ указания width и height
         payload = {
             "model": "agnes-image-2.0-flash",
             "prompt": prompt,
@@ -482,12 +435,13 @@ async def generate_with_agnes(image_url: str, prompt: str, original_width: int =
             "extra_body": {
                 "image": [image_url],
                 "response_format": "url",
-                "width": width,
-                "height": height,
                 "num_inference_steps": 25,
                 "guidance_scale": 7.5
+                # width и height НЕ указываем
             }
         }
+
+        logger.info(f"Отправка запроса в Agnes API без указания размеров")
 
         start_time = time.time()
         response = requests.post(AGNES_API_URL, headers=headers, json=payload, timeout=120)
@@ -499,6 +453,7 @@ async def generate_with_agnes(image_url: str, prompt: str, original_width: int =
         if response.status_code == 200:
             data = response.json()
             if "data" in data and len(data["data"]) > 0:
+                logger.info(f"Успешная генерация, получен URL: {data['data'][0]['url'][:50]}...")
                 return data["data"][0]["url"]
             else:
                 logger_system.log_error(None, "api_invalid_response", f"Invalid response format: {data}")
@@ -1090,13 +1045,8 @@ async def handle_general_photo(update: Update, context: ContextTypes.DEFAULT_TYP
 
         await status_msg.edit_text(f"🤖 Генерирую...")
         
-        # Передаем оригинальные размеры для сохранения пропорций
-        result_url = await generate_with_agnes(
-            image_url, 
-            prompt,
-            original_info['width'] if original_info else None,
-            original_info['height'] if original_info else None
-        )
+        # Генерируем БЕЗ указания размеров
+        result_url = await generate_with_agnes(image_url, prompt)
 
         if result_url:
             processing_time = int(time.time() - start_time)
@@ -1201,13 +1151,8 @@ async def handle_custom_photo(update: Update, context: ContextTypes.DEFAULT_TYPE
                                      '')
             return
 
-        # Передаем оригинальные размеры для сохранения пропорций
-        result_url = await generate_with_agnes(
-            image_url, 
-            custom_prompt,
-            original_info['width'] if original_info else None,
-            original_info['height'] if original_info else None
-        )
+        # Генерируем БЕЗ указания размеров
+        result_url = await generate_with_agnes(image_url, custom_prompt)
 
         if result_url:
             processing_time = int(time.time() - start_time)
@@ -1350,6 +1295,8 @@ def main():
     print("📁 Логи сохраняются в папку /logs")
     print("📁 Временные файлы в /temp")
     print("📁 Бэкапы в /backups")
+    print("=" * 60)
+    print("ℹ️ Agnes API работает без указания размеров")
     print("=" * 60)
 
     app.run_polling(drop_pending_updates=True)
